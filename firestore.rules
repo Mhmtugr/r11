@@ -1,0 +1,104 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if the user is an admin (example implementation)
+    // Firebase Authentication Custom Claims ile 'admin' claim'i true olan kullanıcılar için.
+    function isAdmin() {
+      return request.auth.token.admin == true;
+    }
+
+    // Kullanıcı Profilleri
+    // Kullanıcılar kendi profillerini okuyabilir, adminler herkesinkini.
+    // Kullanıcılar kendi profillerini oluşturabilir (kayıt sırasında) ve güncelleyebilir.
+    match /users/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow create: if request.auth != null; // Genellikle kullanıcı kayıt olurken kendi dokümanını oluşturur
+      allow update: if request.auth != null && request.auth.uid == userId;
+      // allow delete: if request.auth != null && request.auth.uid == userId; // Kullanıcıların hesaplarını silebilip silemeyeceğine karar verin
+    }
+
+    // Siparişler (Orders)
+    // Kimliği doğrulanmış kullanıcılar siparişleri okuyabilir ve oluşturabilir.
+    // Güncelleme/silme işlemleri için idealde sahiplik kontrolü (resource.data.userId == request.auth.uid) veya admin yetkisi gerekir.
+    match /orders/{orderId} {
+      allow read: if request.auth != null; // Kimliği doğrulanmış herkes okuyabilir
+      allow create, update, delete: if request.auth != null; // Yazma işlemleri için daha detaylı kurallar eklenebilir (örn: isAdmin() veya sahiplik)
+    }
+
+    // Malzemeler (Materials)
+    // Kimliği doğrulanmış kullanıcılar malzemeleri okuyabilir.
+    // Malzeme ana verilerini genellikle sadece adminler yazabilmeli/değiştirebilmelidir.
+    match /materials/{materialId} {
+      allow read: if request.auth != null; // Kimliği doğrulanmış herkes okuyabilir
+      allow write: if request.auth != null && isAdmin(); 
+    }
+
+    // Müşteriler (Customers)
+    // Siparişlere benzer şekilde, kimliği doğrulanmış kullanıcılar müşteri verilerini yönetebilir.
+    // Gerekirse rollere göre (örneğin, satış rolü) detaylandırın.
+    match /customers/{customerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Teknik Dokümanlar (Technical Documents)
+    // Kimliği doğrulanmış kullanıcılar okuyabilir. Yazma işlemi adminlere veya teknik rollere kısıtlanabilir.
+    match /technical_documents/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isAdmin();
+    }
+
+    // Bildirimler (Notifications) - Bildirimlerin kullanıcıya hedeflendiği varsayılarak
+    // Kullanıcılar kendi bildirimlerini okuyabilir/güncelleyebilir/silebilir.
+    // Sistem veya adminler bildirim oluşturabilir.
+    match /notifications/{notificationId} {
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null;
+    }
+
+    // Diğer modüllere ait koleksiyonlar için genel kimliği doğrulanmış erişim.
+    // Her modül için özel gereksinimlerinize göre bu kuralları detaylandırmalısınız.
+
+    match /planning/{docId} { // PlanningDashboard için
+      allow read, write: if request.auth != null;
+    }
+    match /production_data/{docId} { // ProductionOverview için
+      allow read, write: if request.auth != null;
+    }
+    match /inventory/{docId} { // InventoryList, StockView için
+      allow read, write: if request.auth != null;
+    }
+    match /purchasing/{docId} { // PurchasingView için
+      allow read, write: if request.auth != null;
+    }
+    match /reports_config/{docId} { // ReportsView için (rapor konfigürasyonları saklanıyorsa)
+      allow read, write: if request.auth != null;
+    }
+    
+    // Ayarlar (Settings)
+    // Kullanıcıya özel ayarlar
+    match /user_settings/{userId}/{settingId} { 
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Global uygulama ayarları
+    match /app_settings/{settingId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && isAdmin();
+    }
+
+    match /ai_insights/{insightId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /notes/{noteId} {
+      allow create: if request.auth != null; 
+      allow read: if request.auth != null; // AI'nın ve sipariş detaylarının ilgili notları okuyabilmesi için genişletildi
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    match /chat_messages/{chatId}/{messageId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
